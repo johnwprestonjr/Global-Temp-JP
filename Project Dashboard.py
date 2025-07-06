@@ -21,15 +21,6 @@ df_long = df.melt(
     var_name="Year",
     value_name="TempChange"
 )
-df_long["Year"] = df_long["Year"].astype(int)
-
-# Load country coordinates (ISO3 + lat/lon)
-coords_url = "https://raw.githubusercontent.com/plotly/datasets/master/2014_world_gdp_with_codes.csv"
-coords_df = pd.read_csv(coords_url)[["COUNTRY", "CODE", "Latitude", "Longitude"]]
-coords_df.columns = ["Country", "ISO3", "Latitude", "Longitude"]
-
-# Merge temperature data with coordinates
-df_geo = df_long.merge(coords_df, on="ISO3", how="left")
 
 # Sidebar filters
 st.sidebar.header("🔍 Filters")
@@ -46,7 +37,7 @@ if selected_year != "All":
     filtered_data = filtered_data[filtered_data["Year"] == selected_year]
 
 # Layout Tabs
-tab1, tab2, tab3 = st.tabs(["📊 Charts", "🗺️ Map", "📋 Data"])
+tab1, tab2 = st.tabs(["📊 Charts", "📋 Data"])
 
 # ───────────────────────────────────────────
 # TAB 1: Charts
@@ -80,41 +71,8 @@ with tab1:
     st.altair_chart(bar_chart, use_container_width=True)
 
 # ───────────────────────────────────────────
-# TAB 2: Map
+# TAB 2: Data Table
 # ───────────────────────────────────────────
 with tab2:
-    st.subheader(f"🌐 Map of Global Temperature Change {f'for {selected_year}' if selected_year != 'All' else ''}")
-    if selected_year == "All":
-        map_year = df_geo["Year"].max()
-    else:
-        map_year = int(selected_year)
-
-    map_df = df_geo[df_geo["Year"] == map_year].dropna(subset=["Latitude", "Longitude", "TempChange"])
-
-    st.pydeck_chart(pdk.Deck(
-        map_style="mapbox://styles/mapbox/light-v9",
-        initial_view_state=pdk.ViewState(
-            latitude=0,
-            longitude=0,
-            zoom=1,
-            pitch=0,
-        ),
-        layers=[
-            pdk.Layer(
-                "ScatterplotLayer",
-                data=map_df,
-                get_position="[Longitude, Latitude]",
-                get_radius=40000,
-                get_fill_color="[255, (1 - TempChange / 2) * 100, TempChange * 150, 160]",
-                pickable=True,
-            )
-        ],
-        tooltip={"text": "Country: {Country}\nYear: " + str(map_year) + "\nTemp Change: {TempChange}°C"}
-    ))
-
-# ───────────────────────────────────────────
-# TAB 3: Data Table
-# ───────────────────────────────────────────
-with tab3:
     st.subheader("Filtered Data Table")
     st.dataframe(filtered_data)
