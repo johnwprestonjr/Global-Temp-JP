@@ -79,7 +79,7 @@ with tab_charts:
         )
     )
 
-    # ── 2) BAR (bottom) ────────────────────────────────────
+ # ── 2) BAR (bottom) ────────────────────────────────────
     early = (
         df_long[df_long["Year"] <= 1992]
         .groupby("Country")["TempChange"].std()
@@ -94,18 +94,19 @@ with tab_charts:
     std_comp["Delta_Std"] = std_comp["Std_Late"] - std_comp["Std_Early"]
     decreasing = std_comp[std_comp["Delta_Std"] < 0].sort_values("Delta_Std")
 
+    xmin = float(decreasing["Delta_Std"].min())  # negative number
+
     bar = (
         alt.Chart(decreasing)
         .mark_bar()
         .encode(
             x=alt.X("Delta_Std:Q",
+                    scale=alt.Scale(domain=[0, xmin]),   # ⬅ start at 0
                     title="Δ Std Dev (1993–2024 – 1961–1992)"),
             y=alt.Y("Country:N", sort="-x"),
             color=alt.Color(
                 "Delta_Std:Q",
-                scale=alt.Scale(scheme="redblue",
-                                reverse=True,
-                                domainMid=0),
+                scale=alt.Scale(scheme="redblue", reverse=True, domainMid=0),
                 legend=alt.Legend(title="Δ Std Dev")
             ),
             opacity=alt.condition(sel_country, alt.value(1), alt.value(0.4)),
