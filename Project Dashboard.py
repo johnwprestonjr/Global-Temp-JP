@@ -75,7 +75,7 @@ with tab_charts:
             height=400,
             width=750,
             title=f"Temperature Change Over Time – "
-                  f"{selected_country if selected_country!='All' else 'Sample of Countries'}"
+                  f"{selected_country if selected_country!='All' else 'All Countries'}"
         )
     )
 
