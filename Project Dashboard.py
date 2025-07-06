@@ -12,7 +12,7 @@ st.set_page_config(
 st.title("🌍 Global Temperature Story 🌡️")
 
 # Load temperature dataset
-df = pd.read_csv("/mnt/data/Indicator_3_1_Climate_Indicators_Annual_Mean_Global_Surface_Temperature_577579683071085080.csv")
+df = pd.read_csv("Indicator_3_1_Climate_Indicators_Annual_Mean_Global_Surface_Temperature_577579683071085080.csv")
 year_cols = [col for col in df.columns if col.isdigit()]
 df_long = df.melt(
     id_vars=["Country", "ISO2", "ISO3", "Indicator", "Unit"],
