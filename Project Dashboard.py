@@ -44,13 +44,13 @@ tab_charts, tab_data = st.tabs(["📊 Charts", "📋 Data"])
 with tab_charts:
     alt.data_transformers.disable_max_rows()
 
-    # Shared selection (must be defined before either chart uses it)
+    # Shared selection
     sel_country = alt.selection_point(fields=["Country"], empty="all")
 
-    # 1) ── SCATTER: temperature change over time ────────────────
+    # ── 1) SCATTER (top) ───────────────────────────────────
     if selected_country == "All":
-        show_countries = df_long["Country"].unique()[:10]
-        scatter_data = df_long[df_long["Country"].isin(show_countries)]
+        sample_countries = df_long["Country"].unique()[:10]
+        scatter_data = df_long[df_long["Country"].isin(sample_countries)]
     else:
         scatter_data = filtered
 
@@ -62,28 +62,32 @@ with tab_charts:
             y="TempChange:Q",
             color=alt.Color(
                 "TempChange:Q",
-                scale=alt.Scale(scheme="redblue", domainMid=0),  # 🔴→⚪→🔵
+                scale=alt.Scale(scheme="redblue",
+                                reverse=True,  # 🔵 ➜ ⚪ ➜ 🔴
+                                domainMid=0),
                 legend=alt.Legend(title="Temp Change (°C)")
             ),
             opacity=alt.condition(sel_country, alt.value(1), alt.value(0.15)),
             tooltip=["Country", "Year", "TempChange"]
         )
-        .transform_filter(sel_country)      # linked to selection
-        .properties(height=400, width=750,
-                    title=f"Temperature Change Over Time – {selected_country if selected_country!='All' else 'Sample of Countries'}")
+        .transform_filter(sel_country)
+        .properties(
+            height=400,
+            width=750,
+            title=f"Temperature Change Over Time – "
+                  f"{selected_country if selected_country!='All' else 'Sample of Countries'}"
+        )
     )
 
-    # 2) ── BAR: countries with decreasing variability ───────────
+    # ── 2) BAR (bottom) ────────────────────────────────────
     early = (
         df_long[df_long["Year"] <= 1992]
-        .groupby("Country")["TempChange"]
-        .std()
+        .groupby("Country")["TempChange"].std()
         .reset_index(name="Std_Early")
     )
     late = (
         df_long[df_long["Year"] >= 1993]
-        .groupby("Country")["TempChange"]
-        .std()
+        .groupby("Country")["TempChange"].std()
         .reset_index(name="Std_Late")
     )
     std_comp = early.merge(late, on="Country")
@@ -95,24 +99,30 @@ with tab_charts:
         .mark_bar()
         .encode(
             x=alt.X("Delta_Std:Q",
-                    title="Δ Std Dev (1993–2024 – 1961–1992)"),
+                    title="Δ Std Dev (1993–2024 – 1961–1992)"),
             y=alt.Y("Country:N", sort="-x"),
             color=alt.Color(
                 "Delta_Std:Q",
-                scale=alt.Scale(scheme="redblue", domainMid=0),  # 🔴→⚪→🔵
-                legend=alt.Legend(title="Δ Std Dev")
+                scale=alt.Scale(scheme="redblue",
+                                reverse=True,
+                                domainMid=0),
+                legend=alt.Legend(title="Δ Std Dev")
             ),
             opacity=alt.condition(sel_country, alt.value(1), alt.value(0.4)),
             stroke=alt.condition(sel_country, alt.value("white"), alt.value(None)),
             tooltip=["Country", "Std_Early", "Std_Late", "Delta_Std"]
         )
         .add_params(sel_country)
-        .properties(height=600, width=750,
-                    title="Countries with Decreasing Temperature Variability")
+        .properties(
+            height=600,
+            width=750,
+            title="Countries with Decreasing Temperature Variability"
+        )
     )
 
+    # Display: scatter on top, bar below
     st.altair_chart(
-        alt.vconcat(bar, scatter).resolve_scale(color="independent"),
+        alt.vconcat(scatter, bar).resolve_scale(color="independent"),
         use_container_width=True
     )
 
