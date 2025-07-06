@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import altair as alt
-import pydeck as pdk
 
 # Set Streamlit page config
 st.set_page_config(
@@ -13,7 +12,7 @@ st.set_page_config(
 st.title("🌍 Global Temperature Story 🌡️")
 
 # Load temperature dataset
-df = pd.read_csv("Indicator_3_1_Climate_Indicators_Annual_Mean_Global_Surface_Temperature_577579683071085080.csv")
+df = pd.read_csv("/mnt/data/Indicator_3_1_Climate_Indicators_Annual_Mean_Global_Surface_Temperature_577579683071085080.csv")
 year_cols = [col for col in df.columns if col.isdigit()]
 df_long = df.melt(
     id_vars=["Country", "ISO2", "ISO3", "Indicator", "Unit"],
@@ -22,15 +21,18 @@ df_long = df.melt(
     value_name="TempChange"
 )
 
+# Convert Year to int for comparison
+df_long["Year"] = df_long["Year"].astype(int)
+
 # Sidebar filters
 st.sidebar.header("🔍 Filters")
-countries = ["All"] + sorted(df_geo["Country"].dropna().unique().tolist())
+countries = ["All"] + sorted(df_long["Country"].dropna().unique().tolist())
 selected_country = st.sidebar.selectbox("Country", countries)
-years = ["All"] + sorted(df_geo["Year"].unique().tolist())
+years = ["All"] + sorted(df_long["Year"].unique().tolist())
 selected_year = st.sidebar.selectbox("Year", years)
 
 # Filter data for display
-filtered_data = df_geo.copy()
+filtered_data = df_long.copy()
 if selected_country != "All":
     filtered_data = filtered_data[filtered_data["Country"] == selected_country]
 if selected_year != "All":
@@ -46,7 +48,7 @@ with tab1:
     alt.data_transformers.disable_max_rows()
     st.subheader(f"Temperature Change Over Time – {selected_country if selected_country != 'All' else 'Sample of Countries'}")
 
-    chart_data = filtered_data if selected_country != "All" else df_geo[df_geo["Country"].isin(df_geo["Country"].unique()[:10])]
+    chart_data = filtered_data if selected_country != "All" else df_long[df_long["Country"].isin(df_long["Country"].unique()[:10])]
     circle_chart = alt.Chart(chart_data).mark_circle(size=60).encode(
         x=alt.X("Year:O", axis=alt.Axis(labelAngle=0)),
         y="TempChange:Q",
@@ -56,8 +58,8 @@ with tab1:
     st.altair_chart(circle_chart, use_container_width=True)
 
     st.subheader("Countries with Decreasing Temperature Variability")
-    early = df_geo[df_geo["Year"] <= 1992].groupby("Country")["TempChange"].std().reset_index(name="Std_Early")
-    late = df_geo[df_geo["Year"] >= 1993].groupby("Country")["TempChange"].std().reset_index(name="Std_Late")
+    early = df_long[df_long["Year"] <= 1992].groupby("Country")["TempChange"].std().reset_index(name="Std_Early")
+    late = df_long[df_long["Year"] >= 1993].groupby("Country")["TempChange"].std().reset_index(name="Std_Late")
     std_comp = early.merge(late, on="Country")
     std_comp["Delta_Std"] = std_comp["Std_Late"] - std_comp["Std_Early"]
     decreasing_std = std_comp[std_comp["Delta_Std"] < 0].sort_values("Delta_Std")
