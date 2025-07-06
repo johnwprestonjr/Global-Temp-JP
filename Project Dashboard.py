@@ -32,7 +32,6 @@ years     = ["All"] + sorted(df_long["Year"].unique())
 selected_country = st.sidebar.selectbox("Country", countries)
 selected_year    = st.sidebar.selectbox("Year", years)
 
-# Filter for table + scatter (bar chart always uses full data)
 filtered = df_long.copy()
 if selected_country != "All":
     filtered = filtered[filtered["Country"] == selected_country]
@@ -45,7 +44,36 @@ tab_charts, tab_data = st.tabs(["📊 Charts", "📋 Data"])
 with tab_charts:
     alt.data_transformers.disable_max_rows()
 
-    # 1) ── BAR CHART: countries with decreasing variability ───────────
+    # Shared selection (must be defined before either chart uses it)
+    sel_country = alt.selection_point(fields=["Country"], empty="all")
+
+    # 1) ── SCATTER: temperature change over time ────────────────
+    if selected_country == "All":
+        show_countries = df_long["Country"].unique()[:10]
+        scatter_data = df_long[df_long["Country"].isin(show_countries)]
+    else:
+        scatter_data = filtered
+
+    scatter = (
+        alt.Chart(scatter_data)
+        .mark_circle(size=60)
+        .encode(
+            x=alt.X("Year:O", axis=alt.Axis(labelAngle=0)),
+            y="TempChange:Q",
+            color=alt.Color(
+                "TempChange:Q",
+                scale=alt.Scale(scheme="redblue", domainMid=0),  # 🔴→⚪→🔵
+                legend=alt.Legend(title="Temp Change (°C)")
+            ),
+            opacity=alt.condition(sel_country, alt.value(1), alt.value(0.15)),
+            tooltip=["Country", "Year", "TempChange"]
+        )
+        .transform_filter(sel_country)      # linked to selection
+        .properties(height=400, width=750,
+                    title=f"Temperature Change Over Time – {selected_country if selected_country!='All' else 'Sample of Countries'}")
+    )
+
+    # 2) ── BAR: countries with decreasing variability ───────────
     early = (
         df_long[df_long["Year"] <= 1992]
         .groupby("Country")["TempChange"]
@@ -62,9 +90,6 @@ with tab_charts:
     std_comp["Delta_Std"] = std_comp["Std_Late"] - std_comp["Std_Early"]
     decreasing = std_comp[std_comp["Delta_Std"] < 0].sort_values("Delta_Std")
 
-    # Selection that will link both charts
-    sel_country = alt.selection_point(fields=["Country"], empty="all")
-
     bar = (
         alt.Chart(decreasing)
         .mark_bar()
@@ -74,48 +99,22 @@ with tab_charts:
             y=alt.Y("Country:N", sort="-x"),
             color=alt.Color(
                 "Delta_Std:Q",
-                scale=alt.Scale(scheme="redblue", domainMid=0),
+                scale=alt.Scale(scheme="redblue", domainMid=0),  # 🔴→⚪→🔵
                 legend=alt.Legend(title="Δ Std Dev")
             ),
-            tooltip=["Country", "Std_Early", "Std_Late", "Delta_Std"],
             opacity=alt.condition(sel_country, alt.value(1), alt.value(0.4)),
-            stroke=alt.condition(sel_country, alt.value("white"), alt.value(None))
+            stroke=alt.condition(sel_country, alt.value("white"), alt.value(None)),
+            tooltip=["Country", "Std_Early", "Std_Late", "Delta_Std"]
         )
         .add_params(sel_country)
         .properties(height=600, width=750,
                     title="Countries with Decreasing Temperature Variability")
     )
 
-    # 2) ── SCATTER: temperature change over time ──────────────────────
-    if selected_country == "All":
-        # Show 10‑country sample to keep scatter readable
-        show_countries = df_long["Country"].unique()[:10]
-        scatter_data = df_long[df_long["Country"].isin(show_countries)]
-    else:
-        scatter_data = filtered
-
-    scatter = (
-        alt.Chart(scatter_data)
-        .mark_circle(size=60)
-        .encode(
-            x=alt.X("Year:O", axis=alt.Axis(labelAngle=0)),
-            y="TempChange:Q",
-            color=alt.Color(
-                "TempChange:Q",
-                scale=alt.Scale(scheme="redblue", domainMid=0),
-                legend=alt.Legend(title="Temp Change (°C)")
-            ),
-            tooltip=["Country", "Year", "TempChange"],
-            opacity=alt.condition(sel_country, alt.value(1), alt.value(0.15))
-        )
-        .transform_filter(sel_country)   # link to bar selection
-        .properties(height=400, width=750,
-                    title=f"Temperature Change Over Time – {selected_country if selected_country!='All' else 'Sample of Countries'}")
+    st.altair_chart(
+        alt.vconcat(bar, scatter).resolve_scale(color="independent"),
+        use_container_width=True
     )
-
-    # ─── Display the linked charts ──────────────────────────
-    linked = alt.vconcat(bar, scatter).resolve_scale(color="independent")
-    st.altair_chart(linked, use_container_width=True)
 
 with tab_data:
     st.subheader("Filtered Data Table")
