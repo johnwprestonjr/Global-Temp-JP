@@ -1,5 +1,5 @@
 # ───────────────────────────────────────────────────────────
-#  🌍  GLOBAL TEMPERATURE STORY DASHBOARD  
+#  🌍  GLOBAL TEMPERATURE STORY DASHBOARD  (Streamlit + Altair)
 # ───────────────────────────────────────────────────────────
 import streamlit as st
 import pandas as pd
@@ -15,6 +15,7 @@ st.title("🌍 Global Temperature Story  🌡️")
 df = pd.read_csv(
     "Indicator_3_1_Climate_Indicators_Annual_Mean_Global_Surface_Temperature_577579683071085080.csv"
 )
+
 year_cols = [c for c in df.columns if c.isdigit()]
 df_long = df.melt(
     id_vars=["Country", "ISO2", "ISO3", "Indicator", "Unit"],
@@ -24,24 +25,51 @@ df_long = df.melt(
 )
 df_long["Year"] = df_long["Year"].astype(int)
 
-# ─── Sidebar filters ───────────────────────────────────────
-st.sidebar.header("🔍 Filters")
-countries = ["All"] + sorted(df_long["Country"].unique())
-years     = ["All"] + sorted(df_long["Year"].unique())
+# ─── Development Status Mapping ────────────────────────────
+developed_iso3 = ["USA", "CAN", "GBR", "DEU", "FRA", "JPN", "AUS",
+                  "NZL", "NOR", "SWE", "CHE"]
+df_long["DevStatus"] = df_long["ISO3"].apply(
+    lambda x: "Developed" if x in developed_iso3 else "Developing"
+)
 
-selected_country = st.sidebar.selectbox("Country", countries)
-selected_year    = st.sidebar.selectbox("Year", years)
+# ─── Build lists once for filters ──────────────────────────
+all_countries = ["All"] + sorted(df_long["Country"].unique())
+all_years     = ["All"] + sorted(df_long["Year"].unique())
+year_min, year_max = df_long["Year"].min(), df_long["Year"].max()
 
-filtered = df_long.copy()
-if selected_country != "All":
-    filtered = filtered[filtered["Country"] == selected_country]
-if selected_year != "All":
-    filtered = filtered[filtered["Year"] == selected_year]
+# ─── Sidebar (two separate filter areas) ───────────────────
+with st.sidebar.expander("📊 Charts Filters", expanded=True):
+    chart_country = st.selectbox("Country", all_countries, key="chart_country")
+    chart_year    = st.selectbox("Year",    all_years,     key="chart_year")
+
+with st.sidebar.expander("🌐 DevStatus Filters", expanded=False):
+    dev_year_range = st.slider(
+        "Year Range",
+        min_value=year_min,
+        max_value=year_max,
+        value=(year_min, year_max),
+        step=1,
+        key="dev_year_range"
+    )
+
+# ── DataFrames after independent filters ───────────────────
+filtered_chart = df_long.copy()
+if chart_country != "All":
+    filtered_chart = filtered_chart[filtered_chart["Country"] == chart_country]
+if chart_year != "All":
+    filtered_chart = filtered_chart[filtered_chart["Year"] == chart_year]
+
+filtered_dev = df_long[
+    (df_long["Year"] >= dev_year_range[0]) &
+    (df_long["Year"] <= dev_year_range[1])
+].copy()
 
 # ─── Tabs layout ───────────────────────────────────────────
-tab_charts, tab_compare, tab_data = st.tabs(["📊 Charts", "🔀 2023 vs 2024", "📋 Data"])
+tab_charts, tab_dev, tab_data = st.tabs(
+    ["📊 Charts", "🌐 Developed vs Developing", "📋 Data"]
+)
 
-# ─── Shared selection ──────────────────────────────────────
+# ─── Shared selection for interactivity ────────────────────
 alt.data_transformers.disable_max_rows()
 sel_country = alt.selection_point(fields=["Country"], empty="all")
 
@@ -51,11 +79,11 @@ sel_country = alt.selection_point(fields=["Country"], empty="all")
 with tab_charts:
 
     # ── 1) SCATTER (top) ───────────────────────────────────
-    if selected_country == "All":
+    if chart_country == "All":
         sample_countries = df_long["Country"].unique()[:10]
         scatter_data = df_long[df_long["Country"].isin(sample_countries)]
     else:
-        scatter_data = filtered
+        scatter_data = filtered_chart
 
     scatter = (
         alt.Chart(scatter_data)
@@ -63,11 +91,11 @@ with tab_charts:
         .encode(
             x=alt.X("Year:O", axis=alt.Axis(labelAngle=0)),
             y="TempChange:Q",
-            color=alt.Color(
-                "TempChange:Q",
-                scale=alt.Scale(scheme="redblue", reverse=True, domainMid=0),
-                legend=alt.Legend(title="Temp Change (°C)")
-            ),
+            color=alt.Color("TempChange:Q",
+                            scale=alt.Scale(scheme="redblue",
+                                            reverse=True,
+                                            domainMid=0),
+                            legend=alt.Legend(title="Temp Change (°C)")),
             opacity=alt.condition(sel_country, alt.value(1), alt.value(0.15)),
             tooltip=["Country", "Year", "TempChange"]
         )
@@ -76,25 +104,33 @@ with tab_charts:
             height=400,
             width=750,
             title=f"Temperature Change Over Time – "
-                  f"{selected_country if selected_country!='All' else 'All Countries'}"
+                  f"{chart_country if chart_country!='All' else 'All Countries'}"
         )
     )
 
     # ── 2) BAR (bottom) ────────────────────────────────────
+    #   Only country filter (not year filter) so stats don't vanish
+    stats_base = df_long.copy()
+    if chart_country != "All":
+        stats_base = stats_base[stats_base["Country"] == chart_country]
+
     early = (
-        df_long[df_long["Year"] <= 1992]
+        stats_base[stats_base["Year"] <= 1992]
         .groupby("Country")["TempChange"].std()
         .reset_index(name="Std_Early")
     )
     late = (
-        df_long[df_long["Year"] >= 1993]
+        stats_base[stats_base["Year"] >= 1993]
         .groupby("Country")["TempChange"].std()
         .reset_index(name="Std_Late")
     )
     std_comp = early.merge(late, on="Country")
     std_comp["Delta_Std"] = std_comp["Std_Late"] - std_comp["Std_Early"]
     decreasing = std_comp[std_comp["Delta_Std"] < 0].sort_values("Delta_Std")
-    xmin = float(decreasing["Delta_Std"].min())
+    if not decreasing.empty:
+        xmin = float(decreasing["Delta_Std"].min())
+    else:
+        xmin = -0.1  # fallback domain
 
     bar = (
         alt.Chart(decreasing)
@@ -104,11 +140,11 @@ with tab_charts:
                     scale=alt.Scale(domain=[0, xmin]),
                     title="Δ Std Dev (1993–2024 – 1961–1992)"),
             y=alt.Y("Country:N", sort="-x"),
-            color=alt.Color(
-                "Delta_Std:Q",
-                scale=alt.Scale(scheme="redblue", reverse=True, domainMid=0),
-                legend=alt.Legend(title="Δ Std Dev")
-            ),
+            color=alt.Color("Delta_Std:Q",
+                            scale=alt.Scale(scheme="redblue",
+                                            reverse=True,
+                                            domainMid=0),
+                            legend=alt.Legend(title="Δ Std Dev")),
             opacity=alt.condition(sel_country, alt.value(1), alt.value(0.4)),
             stroke=alt.condition(sel_country, alt.value("white"), alt.value(None)),
             tooltip=["Country", "Std_Early", "Std_Late", "Delta_Std"]
@@ -127,57 +163,65 @@ with tab_charts:
     )
 
 # ───────────────────────────────────────────────────────────
-# 🔀 2023 vs 2024 COMPARISON TAB — SLOPE GRAPH
+# 🌐 DEVELOPED vs DEVELOPING TAB
 # ───────────────────────────────────────────────────────────
-with tab_compare:
-    yr1, yr2 = 2023, 2024
-    compare_years = [yr1, yr2]
+with tab_dev:
+    st.subheader("Average Temperature Change: Developed vs Developing")
 
-    slope_base = df_long[df_long["Year"].isin(compare_years)].copy()
-    if selected_country != "All":
-        slope_base = slope_base[slope_base["Country"] == selected_country]
-
-    delta = (
-        slope_base.pivot(index="Country", columns="Year", values="TempChange")
+    # Line Graph (yearly average)
+    dev_avg = (
+        filtered_dev
+        .groupby(["Year", "DevStatus"])["TempChange"]
+        .mean()
         .reset_index()
-        .dropna(subset=[yr1, yr2])
     )
-    delta["Change"] = delta[yr2] - delta[yr1]
-    slope_data = slope_base.merge(delta[["Country", "Change"]], on="Country", how="inner")
 
-    slope_chart = (
-        alt.Chart(slope_data)
-        .mark_line(point=True, interpolate="monotone")
+    line_chart = (
+        alt.Chart(dev_avg)
+        .mark_line(point=True)
         .encode(
-            x=alt.X("Year:O", axis=alt.Axis(title=None, labelAngle=0)),
-            y=alt.Y("TempChange:Q", axis=alt.Axis(title="Temp Change (°C)")),
-            color=alt.Color(
-                "Change:Q",
-                scale=alt.Scale(scheme="redblue", domainMid=0),
-                legend=alt.Legend(title=f"Δ {yr2} – {yr1}")
-            ),
-            detail="Country:N",
-            opacity=alt.condition(sel_country, alt.value(1), alt.value(0.15)),
-            tooltip=[
-                "Country",
-                "Year",
-                alt.Tooltip("TempChange:Q", title="Temp Change (°C)"),
-                alt.Tooltip("Change:Q", title=f"Δ {yr2} – {yr1}")
-            ]
+            x=alt.X("Year:O", axis=alt.Axis(labelAngle=0)),
+            y=alt.Y("TempChange:Q", title="Avg Temp Change (°C)"),
+            color=alt.Color("DevStatus:N", legend=alt.Legend(title="Group")),
+            tooltip=["Year", "DevStatus", "TempChange"]
         )
-        .add_params(sel_country)
         .properties(
-            title=f"Temperature Change Comparison: {yr1} vs {yr2}",
+            title=f"Average Temp Change ({dev_year_range[0]}–{dev_year_range[1]})",
             width=750,
-            height=450
+            height=400
         )
     )
+    st.altair_chart(line_chart, use_container_width=True)
 
-    st.altair_chart(slope_chart, use_container_width=True)
+    # Bar Graph (5‑year groups)
+    filtered_dev["YearGroup"] = (filtered_dev["Year"] // 5) * 5
+    dev_bar = (
+        filtered_dev
+        .groupby(["YearGroup", "DevStatus"])["TempChange"]
+        .mean()
+        .reset_index()
+    )
+
+    bar_chart = (
+        alt.Chart(dev_bar)
+        .mark_bar()
+        .encode(
+            x=alt.X("YearGroup:O", title="5‑Year Group"),
+            y=alt.Y("TempChange:Q", title="Avg Temp Change (°C)"),
+            color=alt.Color("DevStatus:N", legend=alt.Legend(title="Group")),
+            tooltip=["YearGroup", "DevStatus", "TempChange"]
+        )
+        .properties(
+            title="5‑Year Average Temperature Change by Development Status",
+            width=750,
+            height=400
+        )
+    )
+    st.altair_chart(bar_chart, use_container_width=True)
 
 # ───────────────────────────────────────────────────────────
-# 📋 DATA TAB — FILTERED TABLE
+# 📋 DATA TAB — TABLE BASED ON CHART FILTERS
 # ───────────────────────────────────────────────────────────
 with tab_data:
-    st.subheader("Filtered Data Table")
-    st.dataframe(filtered)
+    st.subheader("Filtered Data Table (Charts Filters)")
+    st.dataframe(filtered_chart)
