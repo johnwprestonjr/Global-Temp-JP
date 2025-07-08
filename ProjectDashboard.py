@@ -25,6 +25,8 @@ df_long = df.melt(
 )
 df_long["Year"] = df_long["Year"].astype(int)
 
+df2 = pd.read_csv("global-warming-by-gas-and-source.csv")
+
 # ─── Development Status Mapping ────────────────────────────
 developed_iso3 = ["USA", "CAN", "GBR", "DEU", "FRA", "JPN",
                   "AUS", "NZL", "NOR", "SWE", "CHE"]
@@ -144,8 +146,53 @@ with tab_charts:
                     title="Countries with Decreasing Temperature Variability")
     )
 
+    # Stacked area chart for global warming by gas and source (world)
+    # world = df2[df2["Code"] == "OWID_WRL"].copy()
+    # world.drop(columns=["Entity", "Code"], inplace=True)
+
+    def gas_data(entity):
+        name = "World" if entity == "All" else entity
+        g = df2[df2["Entity"] == name].copy()
+        return g
+
+    # Column names in the raw dataset are too verbose
+    # FF&I = Fossil Fuels & Industry
+    # AgLU = Agriculture and Land Use
+
+    gas_cols = [c for c in df2.columns if c.startswith("Change in")]
+
+    shortened_columns = {
+        col: (
+            "N2O_FF&I" if "nitrous oxide" in col and "fossil fuels" in col else
+            "N2O_AgLU" if "nitrous oxide" in col else
+            "CH4_FF&I" if "methane" in col and "fossil fuels" in col else
+            "CH4_AgLU" if "methane" in col else
+            "CO2_FF&I" if "fossil fuels" in col else 
+            "CO2_AgLU"
+        )
+        for col in gas_cols
+    }
+    
+    gas_df = gas_data(chart_country)
+    gas_df.drop(columns=["Code"], inplace=True)
+    gas_df.rename(columns=shortened_columns, inplace=True)
+
+    gas_long = gas_df.melt(
+        id_vars="Year",
+        value_vars=list(shortened_columns.values()),
+        var_name="series",
+        value_name="Temp Change"
+    )
+
+    area = alt.Chart(gas_long).mark_area().encode(
+        x="Year:O",
+        y="Temp Change:Q",
+        color="series:N",
+        order="series:N"
+    ).properties(title=f"Warming by Gas and Source ({chart_country})")
+
     st.altair_chart(
-        alt.vconcat(scatter, bar).resolve_scale(color="independent"),
+        alt.vconcat(scatter, bar, area).resolve_scale(color="independent"),
         use_container_width=True
     )
 
@@ -219,3 +266,7 @@ with tab_dev:
 with tab_data:
     st.subheader("Filtered Data Table (Charts Filters)")
     st.dataframe(filtered_chart)
+
+with tab_data:
+    st.subheader("Data Table (Global Warming by Gas and Source)")
+    st.dataframe(gas_df)
